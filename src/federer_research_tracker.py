@@ -13,7 +13,8 @@ import streamlit as st
 
 
 APP_TITLE = "Federer Company Research Tracker"
-DEFAULT_TARGET_CSV = Path(__file__).with_name("federer_target_companies.csv")
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_TARGET_CSV = PROJECT_ROOT / "data" / "federer_company_research.csv"
 
 CITY_OPTIONS = [
     "Hyderabad",
@@ -393,7 +394,39 @@ def seed_state() -> None:
         not st.session_state.companies
         or st.session_state.get("loaded_default_csv_version") != csv_version
     ):
-        st.session_state.companies = pd.read_csv(DEFAULT_TARGET_CSV).to_dict("records")
+        source = pd.read_csv(DEFAULT_TARGET_CSV)
+        # The published research sheet uses reader-friendly column names; the
+        # tracker uses compact fields internally. Normalize the seed data so
+        # the shipped dashboard opens with all 25 companies ready to explore.
+        score_map = {"Weak": 0, "Moderate": 0.5, "Strong": 1}
+        seeded = pd.DataFrame(
+            {
+                "company": source["Company Name"],
+                "website": source["Website"],
+                "city": source["City"],
+                "segment": source["Segment"],
+                "basket": "A",
+                "what_they_make": source["What They Make"],
+                "revenue_estimate": source["Revenue Band"],
+                "decision_maker": source["Decision Maker"],
+                "e1_producer": True,
+                "e2_accessible": True,
+                "growth_signal_count": source["C6 Growth Score"].map(score_map).fillna(0).mul(2).astype(int),
+                "total_score": pd.to_numeric(source["Federer Score"], errors="coerce").fillna(0).astype(int),
+                "band": source["Score Band"],
+                "verdict": source["Verdict"],
+                "personalization_hook": source["Personalization Hook"],
+                "source_links": source["Evidence Sources"],
+                "c3_score": source["C3 Differentiation Score"].map(score_map).fillna(0).mul(SCORE_RULES["Differentiated"]["weight"]).astype(int),
+                "c4_score": source["C4 Tech DM Score"].map(score_map).fillna(0).mul(SCORE_RULES["Decision-maker quality"]["weight"]).astype(int),
+                "c5_score": source["C5 Tailwind Score"].map(score_map).fillna(0).mul(SCORE_RULES["Growing sector"]["weight"]).astype(int),
+                "c6_score": source["C6 Growth Score"].map(score_map).fillna(0).mul(SCORE_RULES["Growth signals"]["weight"]).astype(int),
+                "c7_score": 0,
+                "c8_score": 0,
+                "notes": source["Verdict Reasoning"],
+            }
+        )
+        st.session_state.companies = seeded.to_dict("records")
         st.session_state.loaded_default_csv_version = csv_version
     st.session_state.setdefault("rejects", [])
     st.session_state.setdefault("target_city", "Pune")
